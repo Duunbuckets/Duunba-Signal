@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Duunba Signal</title>
+  <style>
+    :root{
+      --bg0:#070912;
+      --bg1:#0b1430;
+      --haze: rgba(160,190,255,.08);
+      --beam: rgba(190,220,255,.22);
+      --beamEdge: rgba(210,235,255,.35);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.68);
+      --btn: rgba(255,255,255,.10);
+      --btn2: rgba(255,255,255,.16);
+      --outline: rgba(255,255,255,.22);
+      --accent: rgba(205,235,255,.9);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background: radial-gradient(1200px 800px at 70% 15%, #182a62 0%, var(--bg1) 35%, var(--bg0) 80%);
+      overflow:hidden;
+    }
+
+    /* subtle fog + stars */
+    .fog{
+      position:fixed; inset:0;
+      background:
+        radial-gradient(800px 500px at 20% 25%, rgba(140,170,255,.10), transparent 60%),
+        radial-gradient(900px 600px at 80% 20%, rgba(140,170,255,.08), transparent 65%),
+        radial-gradient(700px 500px at 55% 65%, rgba(140,170,255,.07), transparent 62%),
+        repeating-linear-gradient( to bottom, rgba(255,255,255,.018), rgba(255,255,255,.018) 1px, transparent 3px, transparent 7px);
+      mix-blend-mode: screen;
+      filter: blur(0.2px);
+      pointer-events:none;
+      opacity:.9;
+    }
+    canvas#stars{
+      position:fixed; inset:0;
+      pointer-events:none;
+    }
+
+    /* UI */
+    .ui{
+      position:fixed;
+      left:clamp(14px, 3vw, 28px);
+      top:clamp(14px, 3vw, 28px);
+      width:min(520px, calc(100vw - 28px));
+      z-index:5;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      padding:14px 14px;
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 18px;
+      backdrop-filter: blur(10px);
+    }
+    .title{
+      display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    }
+    .title h1{
+      margin:0;
+      font-size: 18px;
+      letter-spacing:.4px;
+      font-weight:750;
+    }
+    .title .hint{
+      font-size: 12px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .controls{
+      display:flex; gap:10px; flex-wrap:wrap;
+    }
+    button{
+      appearance:none;
+      border:1px solid var(--outline);
+      background: linear-gradient(180deg, var(--btn2), var(--btn));
+      color:var(--text);
+      padding:10px 12px;
+      border-radius: 14px;
+      font-weight:700;
+      letter-spacing:.2px;
+      cursor:pointer;
+      user-select:none;
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      transition: transform .08s ease, background .2s ease, border-color .2s ease;
+    }
+    button:active{ transform: translateY(1px) scale(.99); }
+    button.primary{
+      border-color: rgba(205,235,255,.35);
+      background: linear-gradient(180deg, rgba(205,235,255,.22), rgba(255,255,255,.08));
+      box-shadow: 0 10px 30px rgba(140,180,255,.18);
+    }
+    .pill{
+      font-size:12px;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: var(--accent);
+    }
+    .row{
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+      color:var(--muted);
+      font-size:12px;
+    }
+    input[type="text"]{
+      flex:1;
+      min-width: 210px;
+      padding:10px 12px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.22);
+      color: var(--text);
+      outline:none;
+    }
+    input[type="text"]::placeholder{ color: rgba(255,255,255,.35); }
+
+    /* Signal layer */
+    .scene{
+      position:fixed; inset:0;
+      display:grid;
+      place-items:center;
+      pointer-events:none;
+    }
+    .signal{
+      position:absolute; inset:0;
+      opacity:0;
+      transition: opacity .35s ease;
+    }
+    .signal.on{ opacity:1; }
+
+    /* Beam + projection */
+    .beamWrap{
+      position:absolute; inset:0;
+      transform-origin: 50% 90%;
+      will-change: transform;
+      filter: drop-shadow(0 0 22px rgba(170,210,255,.18));
+    }
+
+    /* The projector location (bottom center-ish) */
+    .projector{
+      position:absolute;
+      left:50%;
+      bottom: clamp(16px, 3vh, 34px);
+      transform: translateX(-50%);
+      width: 160px;
+      height: 26px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 10px 40px rgba(0,0,0,.55);
+      opacity:.9;
+    }
+    .projector::before{
+      content:"";
+      position:absolute;
+      left:50%; top:50%;
+      transform: translate(-50%,-50%);
+      width: 90px; height: 8px;
+      border-radius:999px;
+      background: rgba(205,235,255,.25);
+      filter: blur(.2px);
+    }
+
+    .beam{
+      position:absolute;
+      left:50%;
+      bottom: clamp(26px, 4.2vh, 48px);
+      transform: translateX(-50%);
+      width: min(76vw, 980px);
+      height: min(62vh, 720px);
+      clip-path: polygon(48% 100%, 52% 100%, 75% 0%, 25% 0%);
+      background: linear-gradient(
+        to top,
+        rgba(190,220,255,.05) 0%,
+        rgba(190,220,255,.18) 40%,
+        rgba(190,220,255,.12) 70%,
+        rgba(190,220,255,.06) 100%
+      );
+      border-top: 1px solid rgba(210,235,255,.10);
+      filter: blur(0.2px);
+    }
+    .beam::after{
+      content:"";
+      position:absolute; inset:-20%;
+      background: radial-gradient(circle at 50% 12%, rgba(220,245,255,.20), transparent 55%);
+      opacity:.9;
+      transform: rotate(-6deg);
+      mix-blend-mode: screen;
+    }
+
+    .projection{
+      position:absolute;
+      top: 14vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(72vw, 860px);
+      height: min(32vh, 320px);
+      display:grid;
+      place-items:center;
+      opacity:.98;
+      filter:
+        drop-shadow(0 0 24px rgba(190,220,255,.20))
+        drop-shadow(0 0 60px rgba(120,170,255,.14));
+    }
+
+    .badge{
+      padding: clamp(14px, 2.2vh, 18px) clamp(22px, 4vw, 34px);
+      border-radius: 999px;
+      border: 1px solid rgba(210,235,255,.22);
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), transparent 55%),
+        radial-gradient(circle at 70% 70%, rgba(255,255,255,.08), transparent 58%),
+        rgba(0,0,0,.12);
+      backdrop-filter: blur(6px);
+    }
+
+    .word{
+      font-size: clamp(42px, 7.2vw, 96px);
+      font-weight: 900;
+      letter-spacing: .8px;
+      text-transform:none;
+      color: rgba(235,250,255,.92);
+      text-shadow:
+        0 0 6px rgba(205,235,255,.55),
+        0 0 26px rgba(170,210,255,.35);
+    }
+    /* slight “projected” wash + scan */
+    .scan{
+      position:absolute; inset:-20%;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,.04),
+        rgba(255,255,255,.04) 1px,
+        transparent 3px,
+        transparent 8px
+      );
+      opacity:.35;
+      mix-blend-mode: screen;
+      animation: drift 6s linear infinite;
+    }
+    @keyframes drift{
+      0%{ transform: translateY(0); }
+      100%{ transform: translateY(120px); }
+    }
+
+    /* full-screen hint */
+    .footerTip{
+      position:fixed;
+      right:clamp(14px, 3vw, 28px);
+      bottom:clamp(14px, 3vw, 28px);
+      z-index:5;
+      padding:10px 12px;
+      border-radius: 16px;
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+      color: var(--muted);
+      font-size: 12px;
+      max-width: min(420px, calc(100vw - 28px));
+    }
+    .footerTip b{ color: var(--text); }
+
+    /* Reduce motion */
+    @media (prefers-reduced-motion: reduce){
+      .scan{ animation:none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+  <div class="fog" aria-hidden="true"></div>
+
+  <div class="ui">
+    <div class="title">
+      <h1>Duunba Signal</h1>
+      <span class="hint">Tap to light it up</span>
+    </div>
+
+    <div class="controls">
+      <button id="toggle" class="primary">
+        <span id="toggleText">Activate</span>
+        <span class="pill" id="statePill">OFF</span>
+      </button>
+      <button id="fullscreen">Fullscreen</button>
+      <button id="copyLink">Copy link (auto-activate)</button>
+    </div>
+
+    <div class="row">
+      <input id="customText" type="text" placeholder="Optional: change text (e.g., DUUNBA)" maxlength="18" />
+      <button id="apply">Apply</button>
+    </div>
+
+    <div class="row">
+      Tip: share the “auto-activate” link so it turns on immediately.
+    </div>
+  </div>
+
+  <div class="scene" aria-hidden="true">
+    <div id="signal" class="signal">
+      <div id="beamWrap" class="beamWrap">
+        <div class="beam"></div>
+
+        <div class="projection">
+          <div class="badge">
+            <div id="word" class="word">Duunba</div>
+          </div>
+          <div class="scan"></div>
+        </div>
+
+        <div class="projector"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footerTip">
+    <b>Quick share:</b> use the “Copy link (auto-activate)” button, then paste in your group chat.
+  </div>
+
+<script>
+(() => {
+  const signal = document.getElementById('signal');
+  const beamWrap = document.getElementById('beamWrap');
+  const toggleBtn = document.getElementById('toggle');
+  const toggleText = document.getElementById('toggleText');
+  const statePill = document.getElementById('statePill');
+  const fullscreenBtn = document.getElementById('fullscreen');
+  const copyLinkBtn = document.getElementById('copyLink');
+  const wordEl = document.getElementById('word');
+  const customText = document.getElementById('customText');
+  const applyBtn = document.getElementById('apply');
+
+  let on = false;
+  let t0 = performance.now();
+  let raf = null;
+
+  function setOn(next){
+    on = next;
+    signal.classList.toggle('on', on);
+    toggleText.textContent = on ? 'Deactivate' : 'Activate';
+    statePill.textContent = on ? 'ON' : 'OFF';
+    if(on) startAnim(); else stopAnim();
+  }
+
+  function startAnim(){
+    if(raf) return;
+    t0 = performance.now();
+    const loop = (t) => {
+      const dt = (t - t0) / 1000;
+      // gentle sweep + tiny wobble (feels like a real light)
+      const sweep = Math.sin(dt * 0.7) * 10;     // degrees
+      const wobble = Math.sin(dt * 2.1) * 1.6;   // degrees
+      beamWrap.style.transform = `rotate(${sweep + wobble}deg)`;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stopAnim(){
+    if(!raf) return;
+    cancelAnimationFrame(raf);
+    raf = null;
+    beamWrap.style.transform = 'rotate(0deg)';
+  }
+
+  toggleBtn.addEventListener('click', () => setOn(!on));
+
+  fullscreenBtn.addEventListener('click', async () => {
+    try{
+      if(!document.fullscreenElement){
+        await document.documentElement.requestFullscreen();
+      }else{
+        await document.exitFullscreen();
+      }
+    }catch(e){}
+  });
+
+  function applyText(){
+    const v = (customText.value || 'Duunba').trim();
+    wordEl.textContent = v || 'Duunba';
+  }
+  applyBtn.addEventListener('click', applyText);
+  customText.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') applyText();
+  });
+
+  copyLinkBtn.addEventListener('click', async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('go', '1');
+    // preserve custom text in link if set
+    const current = wordEl.textContent.trim();
+    if(current && current.toLowerCase() !== 'duunba') url.searchParams.set('text', current);
+    try{
+      await navigator.clipboard.writeText(url.toString());
+      copyLinkBtn.textContent = 'Copied!';
+      setTimeout(() => copyLinkBtn.textContent = 'Copy link (auto-activate)', 1200);
+    }catch(e){
+      // fallback prompt
+      window.prompt('Copy this link:', url.toString());
+    }
+  });
+
+  // Auto-activate support
+  const params = new URLSearchParams(location.search);
+  const incomingText = params.get('text');
+  if(incomingText){
+    customText.value = incomingText;
+    applyText();
+  }
+  if(params.get('go') === '1') setOn(true);
+
+  // Stars canvas
+  const c = document.getElementById('stars');
+  const ctx = c.getContext('2d', { alpha: true });
+  let W=0,H=0,stars=[];
+  function resize(){
+    W = c.width = Math.floor(window.innerWidth * devicePixelRatio);
+    H = c.height = Math.floor(window.innerHeight * devicePixelRatio);
+    c.style.width = window.innerWidth + 'px';
+    c.style.height = window.innerHeight + 'px';
+    const n = Math.floor((window.innerWidth * window.innerHeight) / 9000);
+    stars = Array.from({length:n}, () => ({
+      x: Math.random()*W,
+      y: Math.random()*H,
+      r: (Math.random()*1.4 + 0.2) * devicePixelRatio,
+      a: Math.random()*0.6 + 0.15,
+      tw: Math.random()*1.8 + 0.4,
+      ph: Math.random()*Math.PI*2
+    }));
+  }
+  function drawStars(ts){
+    ctx.clearRect(0,0,W,H);
+    const t = ts/1000;
+    for(const s of stars){
+      const tw = (Math.sin(t*s.tw + s.ph)*0.25 + 0.75);
+      ctx.globalAlpha = s.a * tw;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,1)';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(drawStars);
+})();
+</script>
+</body>
+</html>
